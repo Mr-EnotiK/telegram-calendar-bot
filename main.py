@@ -176,9 +176,10 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    # Запускаем бота в отдельном потоке
-    bot_thread = threading.Thread(target=lambda: asyncio.run(start_bot()))
-    bot_thread.start()
+    # Запускаем Flask в отдельном потоке (он легкий и не конфликтует)
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
     
-    # Запускаем Flask в основном потоке (чтобы Render видел открытый порт)
-    run_flask()
+    # Запускаем бота в ГЛАВНОМ потоке (теперь без ошибок!)
+    asyncio.run(start_bot())
