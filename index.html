@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Календарь смен</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: #16181d;
+            --card: #21242c;
+            --cell: #2c303a;
+            --text: #f0f2f5;
+            --muted: #8e95a5;
+            --accent: #3b82f6;
+            --border: #363b47;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px;
+            min-height: 100vh;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 420px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .settings-bar {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+        .settings-row label { color: var(--muted); min-width: 72px; }
+        .controls-group { display: flex; align-items: center; gap: 6px; }
+
+        select, input[type="date"], button {
+            background: var(--cell);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px 8px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        input[type="color"] {
+            width: 30px; height: 30px; padding: 2px;
+            border: 1px solid var(--border); border-radius: 8px;
+            background: var(--cell); cursor: pointer;
+        }
+
+        button { cursor: pointer; font-weight: 500; }
+
+        .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: var(--muted); padding: 0 4px; }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .swatch { width: 11px; height: 11px; border-radius: 3px; }
+
+        .wireframe-card {
+            background: var(--card);
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .card-header { display: flex; justify-content: space-between; align-items: center; }
+        .month-title { font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .nav-btns { display: flex; gap: 6px; }
+
+        .weekdays {
+            display: grid; grid-template-columns: repeat(7, 1fr);
+            text-align: center; font-size: 12px; font-weight: 600;
+            color: var(--muted); margin-bottom: 6px;
+        }
+
+        .days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+
+        .day-cell {
+            aspect-ratio: 1;
+            background: var(--cell);
+            border: 1.5px solid transparent;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 600;
+            cursor: pointer; position: relative; user-select: none;
+            color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+        }
+
+        .day-cell.empty { background: transparent; cursor: default; text-shadow: none; }
+        .day-cell.selected { border-color: #ffffff; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3); }
+
+        .has-note::after {
+            content: ""; position: absolute; bottom: 4px;
+            width: 5px; height: 5px; border-radius: 50%;
+            background-color: #fde047; box-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+        }
+
+        .notes-section { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .notes-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+        .notes-date-label { font-weight: 600; color: var(--text); }
+        .notes-status { font-size: 11px; color: var(--muted); }
+
+        .note-editor {
+            width: 100%; min-height: 90px;
+            background: var(--bg); color: var(--text);
+            border: 1px solid var(--border); border-radius: 10px;
+            padding: 10px; font-family: inherit; font-size: 13px;
+            line-height: 1.4; outline: none; white-space: pre-wrap; word-break: break-word;
+        }
+
+        .note-editor:focus { border-color: var(--accent); }
+        .note-editor:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
+
+        .note-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        .btn-save { background: var(--accent); border-color: var(--accent); color: #fff; padding: 6px 14px; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="settings-bar">
+        <div class="settings-row">
+            <label>👤 Я:</label>
+            <div class="controls-group">
+                <input type="color" id="p1Color" value="#1d4ed8" onchange="saveAndRender()" title="Мой цвет">
+                <select id="p1Type" onchange="saveAndRender()">
+                    <option value="2/2">2 / 2</option>
+                    <option value="3/3">3 / 3</option>
+                </select>
+                <input type="date" id="p1Start" value="2026-11-01" onchange="saveAndRender()">
+            </div>
+        </div>
+        <div class="settings-row">
+            <label>👥 Партнёр:</label>
+            <div class="controls-group">
+                <input type="color" id="p2Color" value="#d97706" onchange="saveAndRender()" title="Цвет партнёра">
+                <select id="p2Type" onchange="saveAndRender()">
+                    <option value="2/2">2 / 2</option>
+                    <option value="3/3" selected>3 / 3</option>
+                </select>
+                <input type="date" id="p2Start" value="2026-11-02" onchange="saveAndRender()">
+            </div>
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="swatch" id="legendP1" style="background:#1d4ed8;"></span>Моя смена</div>
+        <div class="legend-item"><span class="swatch" id="legendP2" style="background:#d97706;"></span>Смена партнёра</div>
+        <div class="legend-item"><span class="swatch" style="background:#fde047; border-radius:50%;"></span>Заметка</div>
+    </div>
+
+    <div class="wireframe-card">
+        <div class="card-header">
+            <div class="month-title" id="headerTitle">НОЯБРЬ 2026</div>
+            <div class="nav-btns">
+                <button onclick="navigate(-1)">◀</button>
+                <button onclick="navigate(1)">▶</button>
+            </div>
+        </div>
+
+        <div id="calendarContainer"></div>
+
+        <div class="notes-section">
+            <div class="notes-header">
+                <span class="notes-date-label" id="selectedDateLabel">Заметка на 24.11.2026</span>
+                <span class="notes-status" id="shiftStatusLabel"></span>
+            </div>
+            <div id="noteEditor" class="note-editor" contenteditable="true" data-placeholder="Напишите планы, задачи или напоминание на этот день..."></div>
+            <div class="note-actions">
+                <button onclick="clearNote()">Очистить</button>
+                <button class="btn-save" onclick="saveNote()">Сохранить заметку</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.expand();
+    }
+
+    const months = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+    const weekDays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+    let currentYear = 2026;
+    let currentMonth = 10;
+    let selectedDateStr = "2026-11-24";
+
+    // Загрузка данных, сохранённых ботом (data.json)
+    let botData = { shifts: {}, notes: {} };
+    let notes = {};
+
+    async function loadBotData() {
+        try {
+            const response = await fetch('data.json?t=' + Date.now());
+            if (response.ok) {
+                botData = await response.json();
+                // Сливаем заметки из бота с локальными (приоритет у бота)
+                notes = Object.assign({}, botData.notes || {});
+                localStorage.setItem('shift_v3_notes', JSON.stringify(notes));
+            }
+        } catch (e) {
+            console.log("data.json не найден, используем локальные данные");
+        }
+    }
+
+    const savedSettings = JSON.parse(localStorage.getItem('shift_v3_settings') || 'null');
+    if (savedSettings) {
+        document.getElementById('p1Color').value = savedSettings.p1Color || '#1d4ed8';
+        document.getElementById('p1Type').value = savedSettings.p1Type || '2/2';
+        document.getElementById('p1Start').value = savedSettings.p1Start || '2026-11-01';
+        document.getElementById('p2Color').value = savedSettings.p2Color || '#d97706';
+        document.getElementById('p2Type').value = savedSettings.p2Type || '3/3';
+        document.getElementById('p2Start').value = savedSettings.p2Start || '2026-11-02';
+    }
+
+    // Если локальных заметок нет — берём из бота
+    if (!localStorage.getItem('shift_v3_notes')) {
+        notes = JSON.parse(localStorage.getItem('shift_v3_notes') || '{}');
+    }
+
+    function formatDateStr(y, m, d) {
+        return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    }
+
+    function formatDisplayDate(dateStr) {
+        const parts = dateStr.split('-');
+        return parts[2] + '.' + parts[1] + '.' + parts[0];
+    }
+
+    function isWorking(dateObj, startStr, typeStr) {
+        if (!startStr) return false;
+        const start = new Date(startStr + "T00:00:00");
+        const diffDays = Math.floor((dateObj - start) / (1000 * 60 * 60 * 24));
+        const cycle = typeStr === '2/2' ? 4 : 6;
+        const workDays = typeStr === '2/2' ? 2 : 3;
+        const pos = ((diffDays % cycle) + cycle) % cycle;
+        return pos < workDays;
+    }
+
+    function getDayStatus(dateStr) {
+        const dateObj = new Date(dateStr + "T00:00:00");
+        const c1 = document.getElementById('p1Color').value;
+        const c2 = document.getElementById('p2Color').value;
+        const w1 = isWorking(dateObj, document.getElementById('p1Start').value, document.getElementById('p1Type').value);
+        const w2 = isWorking(dateObj, document.getElementById('p2Start').value, document.getElementById('p2Type').value);
+
+        if (w1 && w2) {
+            // ИЗМЕНЕНО: разделение строго пополам по вертикали (90deg)
+            return {
+                bg: 'linear-gradient(90deg, ' + c1 + ' 50%, ' + c2 + ' 50%)',
+                label: 'Оба на смене'
+            };
+        }
+        if (w1) return { bg: c1, label: 'Моя смена' };
+        if (w2) return { bg: c2, label: 'Смена партнёра' };
+        return { bg: '', label: 'Выходной' };
+    }
+
+    function saveAndRender() {
+        const settings = {
+            p1Color: document.getElementById('p1Color').value,
+            p1Type: document.getElementById('p1Type').value,
+            p1Start: document.getElementById('p1Start').value,
+            p2Color: document.getElementById('p2Color').value,
+            p2Type: document.getElementById('p2Type').value,
+            p2Start: document.getElementById('p2Start').value
+        };
+        localStorage.setItem('shift_v3_settings', JSON.stringify(settings));
+        render();
+    }
+
+    function navigate(delta) {
+        currentMonth += delta;
+        if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+        if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+        render();
+    }
+
+    function selectDay(dateStr) {
+        selectedDateStr = dateStr;
+        updateNoteBox();
+        render();
+    }
+
+    function updateNoteBox() {
+        document.getElementById('selectedDateLabel').innerText = 'Заметка на ' + formatDisplayDate(selectedDateStr);
+        document.getElementById('shiftStatusLabel').innerText = getDayStatus(selectedDateStr).label;
+        document.getElementById('noteEditor').innerText = notes[selectedDateStr] || '';
+    }
+
+    function saveNote() {
+        const val = document.getElementById('noteEditor').innerText.trim();
+        if (val) {
+            notes[selectedDateStr] = val;
+        } else {
+            delete notes[selectedDateStr];
+        }
+        localStorage.setItem('shift_v3_notes', JSON.stringify(notes));
+        render();
+    }
+
+    function clearNote() {
+        document.getElementById('noteEditor').innerText = '';
+        saveNote();
+    }
+
+    function render() {
+        document.getElementById('legendP1').style.background = document.getElementById('p1Color').value;
+        document.getElementById('legendP2').style.background = document.getElementById('p2Color').value;
+        document.getElementById('shiftStatusLabel').innerText = getDayStatus(selectedDateStr).label;
+
+        const container = document.getElementById('calendarContainer');
+        container.innerHTML = '';
+        document.getElementById('headerTitle').innerText = months[currentMonth] + ' ' + currentYear;
+
+        const wkRow = document.createElement('div');
+        wkRow.className = 'weekdays';
+        weekDays.forEach(function(w) {
+            const el = document.createElement('div');
+            el.innerText = w;
+            wkRow.appendChild(el);
+        });
+        container.appendChild(wkRow);
+
+        const grid = document.createElement('div');
+        grid.className = 'days-grid';
+
+        const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+        const offset = firstDay === 0 ? 6 : firstDay - 1;
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+        for (let i = 0; i < offset; i++) {
+            const empty = document.createElement('div');
+            empty.className = 'day-cell empty';
+            grid.appendChild(empty);
+        }
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = formatDateStr(currentYear, currentMonth, d);
+            const status = getDayStatus(dateStr);
+
+            const cell = document.createElement('div');
+            cell.className = 'day-cell';
+            if (status.bg) cell.style.background = status.bg;
+            if (dateStr === selectedDateStr) cell.classList.add('selected');
+            if (notes[dateStr]) cell.classList.add('has-note');
+
+            cell.innerText = d;
+            cell.onclick = function() { selectDay(dateStr); };
+            grid.appendChild(cell);
+        }
+
+        container.appendChild(grid);
+    }
+
+    // Инициализация: сначала грузим данные с сервера, потом рендерим
+    loadBotData().then(() => {
+        updateNoteBox();
+        render();
+    });
+</script>
+</body>
+</html>
